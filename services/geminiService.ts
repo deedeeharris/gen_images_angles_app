@@ -62,7 +62,21 @@ export const generateImageForAngle = async (
 
   } catch (error) {
     console.error(`Error generating image for angle "${angle.name}":`, error);
-    throw new Error(`Failed to generate image for "${angle.name}".`);
+
+    // Check for specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('API key')) {
+        throw new Error('Invalid API key. Please check your Gemini API key.');
+      }
+      if (error.message.includes('quota') || error.message.includes('limit')) {
+        throw new Error('API quota exceeded. Please wait and try again later.');
+      }
+      if (error.message.includes('model')) {
+        throw new Error('Model not available. The gemini-2.5-flash-image model may not be accessible with your API key.');
+      }
+    }
+
+    throw new Error(`Failed to generate image for "${angle.name}". Check console for details.`);
   }
 };
 
