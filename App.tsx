@@ -7,6 +7,11 @@ import { editWithCanva } from './services/canvaService';
 // Helper to add a delay between API calls
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Gemini API Free Tier Limits:
+// - 15 requests per minute (1 request every 4 seconds)
+// - 1,000 requests per day
+// Using 10 second delay to be safe and avoid rate limiting
+const API_DELAY_MS = 10000; // 10 seconds between requests
 const DAILY_GENERATION_LIMIT = 1000;
 
 // Helper component for comparing images with a slider
@@ -51,6 +56,7 @@ const App = () => {
     const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generationProgress, setGenerationProgress] = useState(0);
+    const [waitingSeconds, setWaitingSeconds] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [selectedAngles, setSelectedAngles] = useState<Set<string>>(new Set(CAMERA_ANGLES.map(a => a.name)));
     const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -220,12 +226,19 @@ const App = () => {
                 }
 
                 if (i < anglesToGenerate.length - 1) {
-                    await sleep(2000); 
+                    // Countdown from 10 to 0 seconds
+                    const delaySeconds = API_DELAY_MS / 1000;
+                    for (let sec = delaySeconds; sec > 0; sec--) {
+                        setWaitingSeconds(sec);
+                        await sleep(1000);
+                    }
+                    setWaitingSeconds(0);
                 }
             }
         } finally {
             setIsGenerating(false);
             setGenerationProgress(0);
+            setWaitingSeconds(0);
             setIsApiBusy(false);
         }
     }, [uploadedImage, selectedAngles, isApiBusy, generationsUsed, apiKey]);
@@ -379,7 +392,11 @@ const App = () => {
                             </div>
 
                             <button onClick={handleGenerateClick} disabled={!canPerformApiAction || selectedAngles.size === 0} className="mt-6 w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                                {isGenerating ? `יוצר... (${Math.round(generationProgress)}%)` : isApiBusy ? 'מעבד בקשה...' : `צור ${selectedAngles.size} תמונות`}
+                                {isGenerating ? (
+                                    waitingSeconds > 0
+                                        ? `ממתין ${waitingSeconds}s (מונע rate limit)...`
+                                        : `יוצר... (${Math.round(generationProgress)}%)`
+                                ) : isApiBusy ? 'מעבד בקשה...' : `צור ${selectedAngles.size} תמונות`}
                             </button>
                         </div>
 
