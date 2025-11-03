@@ -47,9 +47,23 @@ export const generateImageForAngle = async (
     }
 
     const candidate = response.candidates[0];
+
+    // Check for policy violations
+    if (candidate.finishReason === 'IMAGE_RECITATION') {
+      throw new Error('⚠️ תמונה זו נחסמה: Gemini זיהה תוכן מוגן זכויות יוצרים או תוכן שנוגד את המדיניות. נסה תמונה אחרת של מוצר פשוט או אובייקט שצילמת בעצמך.');
+    }
+
+    if (candidate.finishReason === 'SAFETY') {
+      throw new Error('⚠️ תמונה זו נחסמה מסיבות בטיחות. נסה תמונה אחרת.');
+    }
+
+    if (candidate.finishReason === 'RECITATION') {
+      throw new Error('⚠️ Gemini זיהה תוכן קיים מוגן. השתמש בתמונות מקוריות שצילמת בעצמך.');
+    }
+
     if (!candidate.content || !candidate.content.parts) {
       console.error('Invalid candidate structure:', candidate);
-      throw new Error('API returned invalid response structure');
+      throw new Error(`API לא החזיר תמונה. Finish reason: ${candidate.finishReason || 'unknown'}`);
     }
 
     for (const part of candidate.content.parts) {
