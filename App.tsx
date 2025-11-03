@@ -57,6 +57,7 @@ const App = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [generationProgress, setGenerationProgress] = useState(0);
     const [waitingSeconds, setWaitingSeconds] = useState(0);
+    const [currentStatus, setCurrentStatus] = useState<string>("");
     const [error, setError] = useState<string | null>(null);
     const [selectedAngles, setSelectedAngles] = useState<Set<string>>(new Set(CAMERA_ANGLES.map(a => a.name)));
     const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -198,19 +199,29 @@ const App = () => {
         setIsGenerating(true);
         setError(null);
         setGeneratedImages([]);
-        
+        setCurrentStatus("מתחיל תהליך יצירה...");
+
         try {
             const anglesToGenerate = CAMERA_ANGLES.filter(angle => selectedAngles.has(angle.name));
             let generationsMade = 0;
+
             for (let i = 0; i < anglesToGenerate.length; i++) {
                 if (generationsUsed + generationsMade >= DAILY_GENERATION_LIMIT) {
                     setError("הגעת למגבלת היצירה היומית.");
                     break;
                 }
                 const angle = anglesToGenerate[i];
+                const currentNum = i + 1;
+                const totalNum = anglesToGenerate.length;
+
                 setGenerationProgress(((i + 1) / anglesToGenerate.length) * 100);
+                setCurrentStatus(`🎨 יוצר תמונה ${currentNum}/${totalNum}: ${angle.name}`);
+
                 try {
+                    setCurrentStatus(`📞 קורא ל-Gemini API עבור: ${angle.name}...`);
                     const base64Data = await generateImageForAngle(uploadedImage, angle, apiKey);
+
+                    setCurrentStatus(`✅ התקבלה תמונה עבור: ${angle.name}`);
                     incrementGenerationCount();
                     generationsMade++;
                     setGeneratedImages(prev => [...prev, {
@@ -222,7 +233,7 @@ const App = () => {
                     const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
                     setError(`שגיאה ביצירת תמונה עבור ${angle.name}. נסה שוב מאוחר יותר.`);
                     console.error(err);
-                    break; 
+                    break;
                 }
 
                 if (i < anglesToGenerate.length - 1) {
@@ -230,15 +241,21 @@ const App = () => {
                     const delaySeconds = API_DELAY_MS / 1000;
                     for (let sec = delaySeconds; sec > 0; sec--) {
                         setWaitingSeconds(sec);
+                        setCurrentStatus(`⏳ ממתין ${sec} שניות לפני הבקשה הבאה (למניעת rate limit)...`);
                         await sleep(1000);
                     }
                     setWaitingSeconds(0);
                 }
             }
+
+            setCurrentStatus(`🎉 הושלם! נוצרו ${generationsMade} תמונות בהצלחה`);
+            await sleep(2000);
+            setCurrentStatus("");
         } finally {
             setIsGenerating(false);
             setGenerationProgress(0);
             setWaitingSeconds(0);
+            setCurrentStatus("");
             setIsApiBusy(false);
         }
     }, [uploadedImage, selectedAngles, isApiBusy, generationsUsed, apiKey]);
@@ -252,20 +269,24 @@ const App = () => {
         if (!imageToUpdate || !uploadedImage || isApiBusy) return;
 
         setIsApiBusy(true);
+        setCurrentStatus(`📞 שולח בקשה ל-Gemini לשדרוג: ${imageToUpdate.angle.name}...`);
         setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? { ...img, isUpscaling: true } : img));
 
         try {
             const upscaledData = await upscaleImage(imageToUpdate.src, uploadedImage.file.type, apiKey);
+            setCurrentStatus(`✅ התמונה שודרגה בהצלחה!`);
             incrementGenerationCount();
             setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? {
                 ...img,
                 src: `data:image/png;base64,${upscaledData}`,
                 originalSrc: imageToUpdate.src,
             } : img));
+            await sleep(1500);
         } catch (err) {
             setError(`Failed to upscale image for ${imageToUpdate.angle.name}.`);
         } finally {
             setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? { ...img, isUpscaling: false } : img));
+            setCurrentStatus("");
             setIsApiBusy(false);
         }
     };
@@ -279,19 +300,23 @@ const App = () => {
         if (!imageToUpdate || !uploadedImage || isApiBusy) return;
 
         setIsApiBusy(true);
+        setCurrentStatus(`📞 שולח בקשה ל-Gemini להסרת רקע: ${imageToUpdate.angle.name}...`);
         setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? { ...img, isRemovingBackground: true } : img));
 
         try {
             const newImageData = await removeImageBackground(imageToUpdate.src, uploadedImage.file.type, apiKey);
+            setCurrentStatus(`✅ הרקע הוסר בהצלחה!`);
             incrementGenerationCount();
             setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? {
                 ...img,
                 src: `data:image/png;base64,${newImageData}`,
             } : img));
+            await sleep(1500);
         } catch (err) {
             setError(`Failed to remove background for ${imageToUpdate.angle.name}.`);
         } finally {
             setGeneratedImages(imgs => imgs.map(img => img.id === imageId ? { ...img, isRemovingBackground: false } : img));
+            setCurrentStatus("");
             setIsApiBusy(false);
         }
     };
@@ -304,19 +329,24 @@ const App = () => {
             return;
         }
         if (!editingImage || !backgroundPrompt.trim() || !uploadedImage || isApiBusy) return;
-        
+
         setIsApiBusy(true);
         setIsChangingBackground(true);
+        setCurrentStatus(`📞 שולח בקשה ל-Gemini לשינוי רקע: ${editingImage.angle.name}...`);
+
         try {
             const newImageData = await changeImageBackground(editingImage.src, uploadedImage.file.type, backgroundPrompt, apiKey);
+            setCurrentStatus(`✅ הרקע שונה בהצלחה!`);
             incrementGenerationCount();
             setGeneratedImages(imgs => imgs.map(img => img.id === editingImage.id ? { ...img, src: `data:image/png;base64,${newImageData}` } : img));
             setEditingImage(null);
             setBackgroundPrompt("");
+            await sleep(1500);
         } catch (err) {
             setError(`Failed to change background for ${editingImage.angle.name}.`);
         } finally {
             setIsChangingBackground(false);
+            setCurrentStatus("");
             setIsApiBusy(false);
         }
     };
@@ -391,11 +421,36 @@ const App = () => {
                                 ))}
                             </div>
 
+                            {/* Live Status Display */}
+                            {currentStatus && (
+                                <div className="mt-4 p-4 bg-slate-700 rounded-lg border-2 border-cyan-500">
+                                    <div className="flex items-center gap-3">
+                                        <div className="animate-pulse">
+                                            {waitingSeconds > 0 ? (
+                                                <div className="text-3xl font-bold text-yellow-400">{waitingSeconds}</div>
+                                            ) : (
+                                                <div className="h-4 w-4 bg-cyan-400 rounded-full"></div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-cyan-300">{currentStatus}</p>
+                                            <div className="w-full bg-slate-600 rounded-full h-2 mt-2">
+                                                <div
+                                                    className="bg-cyan-500 h-2 rounded-full transition-all duration-300"
+                                                    style={{ width: `${generationProgress}%` }}
+                                                ></div>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-1">{Math.round(generationProgress)}% הושלם</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <button onClick={handleGenerateClick} disabled={!canPerformApiAction || selectedAngles.size === 0} className="mt-6 w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors">
                                 {isGenerating ? (
                                     waitingSeconds > 0
-                                        ? `ממתין ${waitingSeconds}s (מונע rate limit)...`
-                                        : `יוצר... (${Math.round(generationProgress)}%)`
+                                        ? `⏳ ממתין ${waitingSeconds}s`
+                                        : `⚙️ יוצר... ${Math.round(generationProgress)}%`
                                 ) : isApiBusy ? 'מעבד בקשה...' : `צור ${selectedAngles.size} תמונות`}
                             </button>
                         </div>
@@ -403,7 +458,37 @@ const App = () => {
                         {/* Results Panel */}
                         <div className="lg:col-span-3">
                             {error && <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4">{error}</div>}
-                            
+
+                            {/* Status Display in Results Area */}
+                            {currentStatus && (
+                                <div className="bg-slate-800 border-2 border-cyan-500 rounded-lg p-6 mb-6 shadow-lg">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-shrink-0">
+                                            {waitingSeconds > 0 ? (
+                                                <div className="relative">
+                                                    <div className="text-5xl font-bold text-yellow-400 animate-pulse">{waitingSeconds}</div>
+                                                    <div className="text-xs text-center text-slate-400 mt-1">שניות</div>
+                                                </div>
+                                            ) : (
+                                                <div className="relative h-12 w-12">
+                                                    <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-400"></div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-lg font-bold text-cyan-300 mb-2">{currentStatus}</p>
+                                            <div className="w-full bg-slate-700 rounded-full h-3">
+                                                <div
+                                                    className="bg-gradient-to-r from-cyan-500 to-blue-500 h-3 rounded-full transition-all duration-300"
+                                                    style={{ width: `${generationProgress}%` }}
+                                                ></div>
+                                            </div>
+                                            <p className="text-sm text-slate-300 mt-2">{Math.round(generationProgress)}% הושלם</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {generatedImages.map(image => (
                                     <div key={image.id} className="bg-slate-800 rounded-lg shadow-lg overflow-hidden group">

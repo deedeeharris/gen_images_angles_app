@@ -142,5 +142,3 @@ Feel free to open issues or submit pull requests!
 - **Image Quality:** Results depend on input image quality and AI interpretation.
 
 ---
-
-**Made with ❤️ using Google Gemini AI**
